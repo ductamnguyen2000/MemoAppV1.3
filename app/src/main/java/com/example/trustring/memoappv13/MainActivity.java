@@ -38,11 +38,11 @@ public class MainActivity extends AppCompatActivity {
     static final int REQUEST_PERMISSION_GET_ACCOUNTS = 1003;
     static final int REQUEST_GOOGLE_PLAY_SERVICES = 1002;
     private static final String PREF_ACCOUNT_NAME = "accountName";
+    private static final String PREFERENCE_NAME = "MyPreferenceAccountName";
     static GoogleAccountCredential mCredential;
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
         // Initialize credentials and service object.
         mCredential = GoogleAccountCredential.usingOAuth2(
                 getApplicationContext(), Arrays.asList(SCOPES))
@@ -70,6 +70,11 @@ public class MainActivity extends AppCompatActivity {
         stopService(new Intent(getBaseContext(), MyService.class));
         finish();
     }
+
+    public void startScheppaHistoryActivity(View view) {
+        Intent intent = new Intent(MainActivity.this, ScheppaHistoryActivity.class);
+        startActivity(intent);
+    }
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
         Log.d("ABCDEF", "onActivityResult " + requestCode + " result" + resultCode);
         switch (requestCode) {
@@ -87,11 +92,15 @@ public class MainActivity extends AppCompatActivity {
                     String accountName =
                             data.getStringExtra(AccountManager.KEY_ACCOUNT_NAME);
                     if (accountName != null) {
-                        SharedPreferences settings =
-                                getPreferences(Context.MODE_PRIVATE);
-                        SharedPreferences.Editor editor = settings.edit();
+                        SharedPreferences pref = getSharedPreferences(PREFERENCE_NAME, MODE_PRIVATE);
+                        SharedPreferences.Editor editor = pref.edit();
                         editor.putString(PREF_ACCOUNT_NAME, accountName);
-                        editor.apply();
+                        editor.commit();
+//                        SharedPreferences settings =
+//                                getPreferences(Context.MODE_PRIVATE);
+//                        SharedPreferences.Editor editor = settings.edit();
+//                        editor.putString(PREF_ACCOUNT_NAME, accountName);
+//                        editor.apply();
                         mCredential.setSelectedAccountName(accountName);
                         //getResultsFromApi();
                     }
@@ -115,8 +124,9 @@ public class MainActivity extends AppCompatActivity {
     private void chooseAccount() {
         if (EasyPermissions.hasPermissions(
                 this, Manifest.permission.GET_ACCOUNTS)) {
-            String accountName = getPreferences(Context.MODE_PRIVATE)
-                    .getString(PREF_ACCOUNT_NAME, null);
+            SharedPreferences pref = getSharedPreferences(PREFERENCE_NAME, MODE_PRIVATE);
+
+            String accountName = pref.getString(PREF_ACCOUNT_NAME,null);
             Log.d("ABC", "chooseAccount: accountName"+accountName);
             if (accountName != null) {
                 mCredential.setSelectedAccountName(accountName);
@@ -238,7 +248,6 @@ public class MainActivity extends AppCompatActivity {
                 }
                 //Register permission
                 requestPermissions(new String[]{Manifest.permission.READ_EXTERNAL_STORAGE}, 1);
-
             }
         }
     }

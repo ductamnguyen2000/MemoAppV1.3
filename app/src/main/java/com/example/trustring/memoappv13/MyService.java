@@ -3,9 +3,11 @@ package com.example.trustring.memoappv13;
 import android.app.Service;
 import android.content.ContentResolver;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.database.ContentObserver;
 import android.database.Cursor;
 import android.graphics.Bitmap;
+import android.icu.util.TimeZone;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Handler;
@@ -15,6 +17,7 @@ import android.provider.MediaStore;
 import android.util.Log;
 import android.widget.Toast;
 
+import com.google.api.client.auth.oauth2.Credential;
 import com.google.api.client.extensions.android.http.AndroidHttp;
 import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential;
 import com.google.api.client.googleapis.extensions.android.gms.auth.GooglePlayServicesAvailabilityIOException;
@@ -28,6 +31,8 @@ import com.google.api.client.json.jackson2.JacksonFactory;
 import com.google.api.client.util.DateTime;
 import com.google.api.client.util.ExponentialBackOff;
 import com.google.api.services.calendar.CalendarScopes;
+import com.google.api.services.calendar.model.CalendarList;
+import com.google.api.services.calendar.model.CalendarListEntry;
 import com.google.api.services.calendar.model.Event;
 import com.google.api.services.calendar.model.EventAttachment;
 import com.google.api.services.calendar.model.EventDateTime;
@@ -43,18 +48,22 @@ import com.google.api.services.vision.v1.model.BatchAnnotateImagesResponse;
 import com.google.api.services.vision.v1.model.EntityAnnotation;
 import com.google.api.services.vision.v1.model.Feature;
 import com.google.api.services.vision.v1.model.Image;
+import com.google.api.services.calendar.Calendar;
+import com.google.api.services.calendar.model.CalendarList;
+import com.google.api.services.calendar.model.CalendarListEntry;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Calendar;
 import java.util.Date;
 import java.util.List;
 
 public class MyService extends Service {
-
+    private static final String PREF_ACCOUNT_NAME = "accountName";
+    private static final String  PREF_CALENDAR_ID = "calendarID";
+    private static final String PREFERENCE_NAME = "MyPreferenceAccountName";
     Handler handler = new Handler();
     String TAG = "ABC";
     private static final String EXTERNAL_CONTENT_URI_MATCHER =
@@ -128,8 +137,9 @@ public class MyService extends Service {
                                     Log.d(TAG, "path: " + path + ", dateAdded: " + dateAdded +
                                             ", currentTime: " + currentTime);
                                     if (dateAdded == currentTime && path.toLowerCase().contains("screenshots/")) {
-                                        Toast.makeText(MyService.this, "SCHEPPA中", Toast.LENGTH_SHORT).show();
-                                        mCredential = MainActivity.mCredential;
+                                        SharedPreferences pref = getSharedPreferences(PREFERENCE_NAME, MODE_PRIVATE);
+                                        mCredential.setSelectedAccountName(pref.getString(PREF_ACCOUNT_NAME,null));
+                                        Log.d(TAG, "onChange: mcre------------"+mCredential.getSelectedAccountName());
                                         new MakeRequestTask(mCredential).execute();
 //                                        Intent dialogIntent = new Intent(MyService.this, MakeMemoActivity.class);
 //                                        dialogIntent.putExtra("path", path);
@@ -198,9 +208,6 @@ public class MyService extends Service {
         protected List<String> doInBackground(Void... params) {
             try {
                 Log.d("ABC", "List<String> getDataFromApi() ");
-
-                //Intent getputIntent = getIntent();
-                //path = getputIntent.getStringExtra("path");
                 googleCloudAPI(Uri.fromFile(new java.io.File(path)));
                 return null;
             } catch (Exception e) {
@@ -234,6 +241,7 @@ public class MyService extends Service {
                     file = mServicedrive.files().create(fileMetadata, mediaContent)
                             .setFields("id")
                             .execute();
+
                     System.out.println("File ID: " + file.getId());
                     urlFile = "https://drive.google.com/file/d/" + file.getId() + "/view?usp=drive_web";
                 } catch (Exception e) {
@@ -249,7 +257,7 @@ public class MyService extends Service {
             String[] lines = imageContent.split("\n");
             Event event = new Event()
                     .setSummary("SCHEPPA " + lines[2] + " " + lines[3])
-                    .setDescription("【写真の文字】\n【START】" + imageContent + "【END】\n This photo was taken at " + new SimpleDateFormat("yyyy-MM-dd-HH-mm-ss").format(Calendar.getInstance().getTime()) + '\n' + urlFile);
+                    .setDescription("【写真の文字】\n【START】" + imageContent + "【END】\n This photo was taken at " + new SimpleDateFormat("yyyy-MM-dd-HH-mm-ss").format(java.util.Calendar.getInstance().getTime()) + '\n' + urlFile);
 
             DateTime startDateTime = new DateTime(new Date());
             EventDateTime start = new EventDateTime()
@@ -261,17 +269,17 @@ public class MyService extends Service {
                     .setDateTime(endDateTime);
             event.setEnd(end);
 
-            String calendarId = "primary";
+            String calendarId = getIDCalendar(mCredential);
             // Google Drive UP
             try {
                 if (urlFile != null) {
                     List<EventAttachment> attachments = new ArrayList<EventAttachment>();
 
                     attachments.add(new EventAttachment()
-                            .setFileUrl("https://drive.google.com/file/d/" + file.getId() + "/view?usp=drive_web")
+                            .setFileUrl(urlFile)
                             .setFileId(file.getId())
                             .setMimeType(file.getMimeType())
-                            .setTitle(file.getName()));
+                            .setTitle(path));
                     event.setAttachments(attachments);
                     event = mService.events().insert(calendarId, event).setSupportsAttachments(true).execute();
                 } else {
@@ -369,7 +377,7 @@ public class MyService extends Service {
                 BatchAnnotateImagesResponse response = annotateRequest.execute();
                 imageContent = convertResponseToString(response);
                 getDataFromApi();
-
+return;
             } catch (GoogleJsonResponseException e) {
                 Log.d("ABC", "failed to make API request because " + e.getContent());
             } catch (IOException e) {
@@ -382,6 +390,7 @@ public class MyService extends Service {
         @Override
         protected void onPreExecute() {
             Log.d("ABC", "onPreExecute: ");
+            Toast.makeText(MyService.this, "SCHEPPA中", Toast.LENGTH_SHORT).show();
             // mOutputText.setText("");
             // mProgress.show();
             //mProgress.hide();
@@ -428,6 +437,53 @@ public class MyService extends Service {
                 //  mOutputText.setText("Request cancelled.");
             }
         }
+
+        private String getIDCalendar (GoogleAccountCredential credentials){
+            HttpTransport httpTransport = AndroidHttp.newCompatibleTransport();
+            JsonFactory jsonFactory = GsonFactory.getDefaultInstance();
+            SharedPreferences pref = getSharedPreferences(PREFERENCE_NAME, MODE_PRIVATE);
+            if( pref.getString(PREF_CALENDAR_ID,null) != null){
+                return  pref.getString(PREF_CALENDAR_ID,null);
+            }
+            SharedPreferences.Editor editor = pref.edit();
+            com.google.api.services.calendar.Calendar service = new Calendar.Builder(httpTransport, jsonFactory, credentials)
+                    .setApplicationName("Android memoappv13").build();
+
+// Iterate through entries in calendar list
+            String pageToken = null;
+            try {
+                do {
+                    CalendarList calendarList = service.calendarList().list().setPageToken(pageToken).execute();
+                    List<CalendarListEntry> items = calendarList.getItems();
+
+                    for (CalendarListEntry calendarListEntry : items) {
+                        if (calendarListEntry.getSummary().compareTo("Scheppa")==0)
+                        {
+                            editor.putString(PREF_CALENDAR_ID, calendarListEntry.getId());
+                            editor.commit();
+                            return calendarListEntry.getId();
+                        }
+                    }
+                    pageToken = calendarList.getNextPageToken();
+                } while (pageToken != null);
+
+            } catch (Exception e){
+                Log.d(TAG, "getIDCalendar: Error "+e.getMessage());
+                return "primary";
+            }
+            try {
+                com.google.api.services.calendar.model.Calendar calendar = new com.google.api.services.calendar.model.Calendar();
+                calendar.setSummary("Scheppa");
+                calendar.setTimeZone(java.util.TimeZone.getDefault().getID().toString());
+                com.google.api.services.calendar.model.Calendar createdCalendar = service.calendars().insert(calendar).execute();
+                editor.putString(PREF_CALENDAR_ID, createdCalendar.getId());
+                editor.commit();
+                return createdCalendar.getId();
+            }catch (Exception e){
+                Log.d(TAG, "getIDCalendar: Create New Calendar Error"+e.getMessage()+"  "+java.util.TimeZone.getDefault().getID().toString());
+            }
+            return "primary";
+        }
     }
 
     public Bitmap scaleBitmapDown(Bitmap bitmap, int maxDimension) {
@@ -470,6 +526,7 @@ public class MyService extends Service {
         Log.d(TAG, "convertResponseToString: " + message);
         return message;
     }
+
 
 
 }
